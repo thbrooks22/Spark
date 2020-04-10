@@ -34,5 +34,21 @@ module Delta =
 
 
 
+(*
+  GammaSet : A typing environment. Maps bound program variables to their types.
+    Implemented as a set of string * tp tuples.
+*)
 module GammaSet = Set.Make(Gamma) ;;
+type gammaset = GammaSet.t ;;
+
+(*
+  DeltaSet : A set of bound type variables.
+*)
 module DeltaSet = Set.Make(Delta) ;;
+type deltaset = DeltaSet.t ;;
+
+module StringSet = Set.Make(String) ;;
+type stringset = StringSet.t ;;
+
+
+val new_type_var :
