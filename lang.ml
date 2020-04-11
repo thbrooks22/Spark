@@ -1,3 +1,4 @@
+open Grammar
 
 exception UnboundVarException of string
 exception UnboundTypeVarException of string
@@ -111,11 +112,28 @@ module Type : Grammar.Type
 
 
     (*
-      subtype : Method to decide whether tau1 is a subtype of tau2 (currently
-        just implemented as equality, will expand later).
+      subtype : Method to decide whether tau1 is a subtype of tau2 (fix record
+        subtyping).
     *)
-    let subtype (tau1 : tp) (tau2 : tp) : bool =
-      tau1 == tau2 ;;
+    let rec subtype (tau1 : tp) (tau2 : tp) : bool =
+      match tau2 with
+      | Unit
+      | Int
+      | Bool
+      | String
+      | Forall _
+      | Typevar _
+      | Record _ -> tau1 == tau2
+      | To (tau, tau') ->
+        (match tau1 with
+        | To (rho, rho') ->
+          (subtype tau rho) && (subtype rho' tau')
+        | _ -> false)
+      | Sum (tau, tau') ->
+        (match tau1 with
+        | Sum (rho, rho') ->
+          (subtype rho tau) && (subtype rho' tau')
+        | _ -> false) ;;
 
 
     (*
@@ -161,10 +179,10 @@ module Type : Grammar.Type
       | U -> Unit
       | Var x ->
         (match type_of gamma x with
+        | None -> raise (UnboundVarException ("Unbound variable " ^ x ^ "."))
         | Some tau ->
           if ok tau delta then tau
-          else raise (UnboundTypeVarException "Unbound type variable.")
-        | None -> raise (UnboundVarException "Unbound variable."))
+          else raise (UnboundTypeVarException "Unbound type variable."))
       | Int _ -> Int
       | Neg e' ->
         if subtype (type_check gamma delta e') Int then Int
@@ -186,13 +204,12 @@ module Type : Grammar.Type
         if ok tau delta then To (tau, tau')
         else raise (UnboundTypeVarException "Unbound type variable.")
       | App (e1, e2) ->
-        (try
-          let To (tau, tau') = type_check gamma delta e1 in
-          let tau'' = type_check gamma delta e2 in
-          if subtype tau'' tau then tau'
-          else raise (ApplicationException "Type of argument does not match function signature.")
-        with Match_failure _ ->
-          raise (ApplicationException "Attempted to apply non-function."))
+        (match type_check gamma delta e1 with
+          | To (tau, tau') ->
+            let tau'' = type_check gamma delta e2 in
+            if subtype tau'' tau then tau'
+            else raise (ApplicationException "Type of argument does not match function signature.")
+          | _ -> raise (ApplicationException "Attempted to apply non-function."))
       | Let ((x, tau), e1, e2) ->
         if not (ok tau delta) then raise (UnboundTypeVarException "Unbound type variable.")
         else
@@ -205,15 +222,34 @@ module Type : Grammar.Type
       | Typeapp (e', tau) ->
         if not (ok tau delta) then raise (UnboundTypeVarException "Unbound type variable.")
         else
-          try
-            let Forall (x, tau') = type_check gamma delta e' in
-            type_subst tau' x tau
-          with Match_failure _ ->
-            raise (TypeApplicationException "Type application failure.") ;;
+          (match type_check gamma delta e' with
+          | Forall (x, tau') -> type_subst tau' x tau
+          | _ -> raise (TypeApplicationException "Type application failure.")) ;;
 
 
     let global_type_check (e : expr) : tp =
       type_check empty_gamma empty_delta e ;;
+
+
+    let rec string_of_tp (tau : tp) : string =
+      match tau with
+      | Unit -> " unit "
+      | Int -> " int "
+      | Bool -> " bool "
+      | String -> " string "
+      | Record lst ->
+        (match lst with
+        | [] -> ""
+        | (str, tau') :: [] -> str ^ ":" ^ (string_of_tp tau')
+        | (str, tau') :: tl -> str ^ ":" ^ (string_of_tp tau') ^ ", " ^
+          (string_of_tp (Record tl)))
+      | To (tau1, tau2) ->
+        " (" ^ (string_of_tp tau1) ^ "->" ^ (string_of_tp tau2) ^ ") "
+      | Sum (tau1, tau2) ->
+        " (" ^ (string_of_tp tau1) ^ "+" ^ (string_of_tp tau2) ^ ") "
+      | Forall (x, tau') ->
+        " (-V-" ^ x ^ "." ^ (string_of_tp tau') ^ ") "
+      | Typevar x -> " " ^ x ^ " " ;;
   end ;;
 
 

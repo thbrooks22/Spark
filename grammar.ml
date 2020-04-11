@@ -24,6 +24,8 @@ module Grammar =
         val type_check : gammaset -> deltaset -> expr -> tp
 
         val global_type_check : expr -> tp
+
+        val string_of_tp : tp -> string
       end
 
       module type Expr =
