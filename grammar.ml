@@ -12,12 +12,12 @@ module Grammar =
 
         type deltaset
         val empty_delta : deltaset
-        val add : 'a -> deltaset -> deltaset
+        val add : string -> deltaset -> deltaset
         val ok : tp -> deltaset -> bool
 
         val subtype : tp -> tp -> bool
 
-        val typse_subst : tp -> string -> tp -> tp
+        val type_subst : tp -> string -> tp -> tp
 
         val new_type_var : deltaset -> string
 

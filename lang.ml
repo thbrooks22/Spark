@@ -45,7 +45,9 @@ type lexpr =
 
 
 
-module Type : Grammar.Type =
+module Type : Grammar.Type
+  with type tp = ltp and
+  type expr = lexpr =
   struct
     type tp = ltp ;;
     type expr = lexpr ;;
@@ -162,7 +164,7 @@ module Type : Grammar.Type =
         | Some tau ->
           if ok tau delta then tau
           else raise (UnboundTypeVarException "Unbound type variable.")
-        | None -> raise (UnboundVarException "Variable " ^ x ^ " unbound."))
+        | None -> raise (UnboundVarException "Unbound variable."))
       | Int _ -> Int
       | Neg e' ->
         if subtype (type_check gamma delta e') Int then Int
@@ -184,13 +186,13 @@ module Type : Grammar.Type =
         if ok tau delta then To (tau, tau')
         else raise (UnboundTypeVarException "Unbound type variable.")
       | App (e1, e2) ->
-        try
+        (try
           let To (tau, tau') = type_check gamma delta e1 in
           let tau'' = type_check gamma delta e2 in
           if subtype tau'' tau then tau'
           else raise (ApplicationException "Type of argument does not match function signature.")
-        with Match_failure ->
-          raise (ApplicationException "Attempted to apply non-function.")
+        with Match_failure _ ->
+          raise (ApplicationException "Attempted to apply non-function."))
       | Let ((x, tau), e1, e2) ->
         if not (ok tau delta) then raise (UnboundTypeVarException "Unbound type variable.")
         else
@@ -206,7 +208,7 @@ module Type : Grammar.Type =
           try
             let Forall (x, tau') = type_check gamma delta e' in
             type_subst tau' x tau
-          with Match_failure ->
+          with Match_failure _ ->
             raise (TypeApplicationException "Type application failure.") ;;
 
 
@@ -217,8 +219,10 @@ module Type : Grammar.Type =
 
 
 
-module Expr : Grammar.Expr =
+module Expr : Grammar.Expr
+  with type tp = ltp and
+  type expr = lexpr =
   struct
     type tp = ltp ;;
     type expr = lexpr ;;
-  end
+  end ;;
