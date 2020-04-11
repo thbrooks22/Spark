@@ -19,7 +19,7 @@ module Grammar =
 
         val type_subst : tp -> string -> tp -> tp
 
-        val new_type_var : deltaset -> string
+        val new_type_var : deltaset -> string -> string
 
         val type_check : gammaset -> deltaset -> expr -> tp
 
@@ -32,5 +32,16 @@ module Grammar =
         sig
           type tp
           type expr
+
+          type varset
+          val empty_set : varset
+          val union : varset -> varset -> varset
+          val append : string -> varset -> varset
+          val remove : string -> varset -> varset
+          val contains : string -> varset -> bool
+
+          val free_vars : expr -> varset
+
+          val new_var : varset -> string -> string
         end
   end ;;

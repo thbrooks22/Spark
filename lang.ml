@@ -160,8 +160,7 @@ module Type : Grammar.Type
         else tau1 ;;
 
 
-    let new_type_var (delta : deltaset) : string =
-      let str = "X" in
+    let new_type_var (delta : deltaset) (str : string) : string =
       let suff = ref 0 in
       let str' = ref str in
       let rec new_type_var' (delta' : deltaset) : string =
@@ -174,6 +173,11 @@ module Type : Grammar.Type
       new_type_var' delta ;;
 
 
+    (*
+      type_check : Method to type check an expression under type environment
+        gamma and variable context delta. Returns the type of the expression
+        or raises an exception if the expression is not well-typed.
+    *)
     let rec type_check (gamma : gammaset) (delta : deltaset) (e : expr) : tp =
       match e with
       | U -> Unit
@@ -261,4 +265,45 @@ module Expr : Grammar.Expr
   struct
     type tp = ltp ;;
     type expr = lexpr ;;
+
+    module VarSet = Set.Make(String) ;;
+    type varset = VarSet.t ;;
+    let empty_set = VarSet.empty ;;
+    let union = VarSet.union ;;
+    let append = VarSet.add ;;
+    let remove = VarSet.remove ;;
+    let contains = VarSet.mem ;;
+
+    let rec free_vars (e : expr) : varset =
+      match e with
+      | U
+      | Int _
+      | Bool _ -> empty_set
+      | Var x -> append x empty_set
+      | Neg e' -> free_vars e'
+      | Plus (e1, e2)
+      | Times (e1, e2)
+      | Pow (e1, e2)
+      | Equals (e1, e2)
+      | Lessthan (e1, e2)
+      | App (e1, e2) -> union (free_vars e1) (free_vars e2)
+      | Lam ((str, _), e') ->
+        remove str (free_vars e')
+      | Let ((x, tau), e1, e2) ->
+        free_vars (App (Lam ((x, tau), e2), e1))
+      | Typelam (_, e')
+      | Typeapp (e', _) -> free_vars e' ;;
+
+
+    let new_var (vars : varset) (str : string) : string =
+      let suff = ref 0 in
+      let str' = ref str in
+      let rec new_var' (vars' : varset) : string =
+        if contains !str' vars'
+          then (suff := !suff + 1;
+            str' := str ^ string_of_int !suff;
+            new_var' vars')
+        else !str'
+        in
+      new_var' vars ;;
   end ;;
