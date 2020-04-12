@@ -45,6 +45,10 @@ type lexpr =
   | Typeapp of lexpr * ltp ;;
 
 
+type levalcontext =
+  | CBV
+  | CBN ;;
+
 
 module Type : Grammar.Type
   with type tp = ltp and
@@ -67,12 +71,15 @@ module Type : Grammar.Type
     let empty_gamma = GammaSet.empty ;;
 
     (* type_of : Method to find the type of variable x in context gamma. *)
-    let type_of (gamma : gammaset) (x : string) : tp option =
+    let type_of (gamma : gammaset)
+                (x : string) : tp option =
       try Some (snd (GammaSet.find (x, Unit) gamma))
       with Not_found -> None ;;
 
     (* append : Method to expand/edit type context with variable x of type tau. *)
-    let append (gamma : gammaset) (x : string) (tau : tp): gammaset =
+    let append (gamma : gammaset)
+               (x : string)
+               (tau : tp) : gammaset =
       let gamma' = GammaSet.remove (x, tau) gamma in
       GammaSet.add (x, tau) gamma' ;;
 
@@ -90,7 +97,8 @@ module Type : Grammar.Type
 
     let add = DeltaSet.add ;;
 
-    let rec ok (tau : tp) (delta : deltaset) : bool =
+    let rec ok (tau : tp)
+               (delta : deltaset) : bool =
       match tau with
       | Unit
       | Int
@@ -115,7 +123,8 @@ module Type : Grammar.Type
       subtype : Method to decide whether tau1 is a subtype of tau2 (fix record
         subtyping).
     *)
-    let rec subtype (tau1 : tp) (tau2 : tp) : bool =
+    let rec subtype (tau1 : tp)
+                    (tau2 : tp) : bool =
       match tau2 with
       | Unit
       | Int
@@ -123,7 +132,7 @@ module Type : Grammar.Type
       | String
       | Forall _
       | Typevar _
-      | Record _ -> tau1 == tau2
+      | Record _ -> tau1 = tau2
       | To (tau, tau') ->
         (match tau1 with
         | To (rho, rho') ->
@@ -140,7 +149,9 @@ module Type : Grammar.Type
       type_subst : Method to substitute a type variable according to
         tau1{tau2 / x}.
     *)
-    let rec type_subst (tau1 : tp) (x : string) (tau2 : tp) : tp =
+    let rec type_subst (tau1 : tp)
+                       (x : string)
+                       (tau2 : tp) : tp =
       match tau1 with
       | Unit
       | Int
@@ -153,14 +164,15 @@ module Type : Grammar.Type
       | Sum (tau, tau') ->
         Sum (type_subst tau x tau2, type_subst tau' x tau2)
       | Forall (x', tau) ->
-        if x' == x then tau1
+        if String.compare x' x == 0 then tau1
         else Forall (x', type_subst tau x tau2)
       | Typevar x' ->
-        if x' == x then tau2
+        if String.compare x' x == 0 then tau2
         else tau1 ;;
 
 
-    let new_type_var (delta : deltaset) (str : string) : string =
+    let new_type_var (delta : deltaset)
+                     (str : string) : string =
       let suff = ref 0 in
       let str' = ref str in
       let rec new_type_var' (delta' : deltaset) : string =
@@ -178,7 +190,9 @@ module Type : Grammar.Type
         gamma and variable context delta. Returns the type of the expression
         or raises an exception if the expression is not well-typed.
     *)
-    let rec type_check (gamma : gammaset) (delta : deltaset) (e : expr) : tp =
+    let rec type_check (gamma : gammaset)
+                       (delta : deltaset)
+                       (e : expr) : tp =
       match e with
       | U -> Unit
       | Var x ->
@@ -261,10 +275,12 @@ module Type : Grammar.Type
 
 module Expr : Grammar.Expr
   with type tp = ltp and
-  type expr = lexpr =
+  type expr = lexpr and
+  type evalcontext = levalcontext =
   struct
     type tp = ltp ;;
     type expr = lexpr ;;
+    type evalcontext = levalcontext ;;
 
     module VarSet = Set.Make(String) ;;
     type varset = VarSet.t ;;
@@ -295,7 +311,8 @@ module Expr : Grammar.Expr
       | Typeapp (e', _) -> free_vars e' ;;
 
 
-    let new_var (vars : varset) (str : string) : string =
+    let new_var (vars : varset)
+                (str : string) : string =
       let suff = ref 0 in
       let str' = ref str in
       let rec new_var' (vars' : varset) : string =
@@ -306,4 +323,77 @@ module Expr : Grammar.Expr
         else !str'
         in
       new_var' vars ;;
+
+
+    let rec subst (e1 : expr)
+                  (x : string)
+                  (e2 : expr) : expr =
+      match e1 with
+      | U
+      | Int _
+      | Bool _ -> e1
+      | Var y ->
+        if String.compare x y == 0 then e2 else e1
+      | Neg e' ->
+        subst e' x e2
+      | Plus (e', e'') ->
+        Plus (subst e' x e2, subst e'' x e2)
+      | Times (e', e'') ->
+        Times (subst e' x e2, subst e'' x e2)
+      | Pow (e', e'') ->
+        Pow (subst e' x e2, subst e'' x e2)
+      | Equals (e', e'') ->
+        Equals (subst e' x e2, subst e'' x e2)
+      | Lessthan (e', e'') ->
+        Lessthan (subst e' x e2, subst e'' x e2)
+      | App (e', e'') ->
+        App (subst e' x e2, subst e'' x e2)
+      | Lam ((y, tau), e') ->
+        if String.compare x y == 0 then e1
+        else if contains y (free_vars e2)
+          then
+            let z = new_var (append x (union (free_vars e2) (free_vars e'))) "x" in
+            Lam ((z, tau), subst (subst e' y (Var z)) x e2)
+        else Lam ((y, tau), subst e' x e2)
+      | Let ((y, tau), e', e'') ->
+        subst (App (Lam ((y, tau), e''), e')) x e2
+      | Typelam (y, e') ->
+        Typelam (y, subst e' x e2)
+      | Typeapp (e', tau) ->
+        Typeapp (subst e' x e2, tau) ;;
+
+
+    let rec reduce (ctxt : evalcontext) (e : expr) : expr option =
+      let reduce' = reduce ctxt in
+      match e with
+      | U
+      | Int _
+      | Bool _
+      | Var _ -> None
+      | Neg e' -> reduce' e'
+      | Plus (e', e'') ->
+        (match reduce' e' with
+        | Some f -> Plus (f, e'')
+        | None ->
+          (match reduce' e'' with
+          | Some f -> Plus (e', f)
+          | None -> None))
+      | Times (e', e'') ->
+        (match reduce' (Plus (e', e'')) with
+        | Some (Plus (f, f')) -> Times (f, f')
+        | None -> None)
+      | Pow (e', e'') ->
+        (match reduce' (Plus (e', e'')) with
+        | Some (Plus (f, f')) -> Pow (f, f')
+        | None -> None)
+      | Equals (e', e'') ->
+        (match reduce' (Plus (e', e'')) with
+        | Some (Plus (f, f')) -> Equals (f, f')
+        | None -> None)
+      | Lessthan (e', e'') ->
+        (match reduce' (Plus (e', e'')) with
+        | Some (Plus (f, f')) -> Lessthan (f, f')
+        | None -> None)
+      | App (e', e'') ->
+        
   end ;;
